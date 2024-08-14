@@ -8,6 +8,47 @@ const Alert = ({ children, className }) => (
   </div>
 );
 
+// Komponen PasswordModal akan berada di sini
+const PasswordModal = ({ isOpen, onClose, onSubmit, darkMode }) => {
+  const [password, setPassword] = useState('');
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} p-6 rounded-lg shadow-xl max-w-md w-full`}>
+        <div className="flex items-center justify-center mb-4">
+          <Lock size={40} className={`${darkMode ? 'text-blue-400' : 'text-blue-500'}`} />
+        </div>
+        <h2 className="text-2xl font-bold text-center mb-4">Catatan Terkunci</h2>
+        <p className="text-center mb-6">Masukkan password untuk membuka catatan ini.</p>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className={`w-full p-2 mb-4 border rounded ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-100 border-gray-300'}`}
+          placeholder="Masukkan password"
+        />
+        <div className="flex justify-end space-x-2">
+          <button
+            onClick={onClose}
+            className={`px-4 py-2 rounded ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'}`}
+          >
+            Batal
+          </button>
+          <button
+            onClick={() => onSubmit(password)}
+            className={`px-4 py-2 rounded ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+          >
+            Buka
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Komponen NoteApp utama akan dimulai di Part 2
 const NoteApp = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -26,6 +67,8 @@ const NoteApp = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [notePassword, setNotePassword] = useState('');
   const [isNoteLocked, setIsNoteLocked] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [currentLockedNote, setCurrentLockedNote] = useState(null);
   const editorRef = useRef(null);
 
   useEffect(() => {
@@ -62,6 +105,9 @@ const NoteApp = () => {
     const bytes = CryptoJS.AES.decrypt(encryptedContent, password);
     return bytes.toString(CryptoJS.enc.Utf8);
   };
+
+  // Lanjutan fungsi-fungsi lainnya akan ada di Part 3
+  // Lanjutan dari Part 2
 
   const saveNote = () => {
     if (currentNote.title.trim() === '' || (editorRef.current && editorRef.current.innerText.trim() === '')) {
@@ -117,32 +163,31 @@ const NoteApp = () => {
 
   const editNote = (note) => {
     if (note.isLocked) {
-      const password = prompt('Masukkan password untuk membuka catatan:');
-      if (password) {
-        try {
-          const decryptedContent = decryptContent(note.encryptedContent, password);
-          setCurrentNote({...note, content: decryptedContent});
-          setIsNoteLocked(true);
-          setNotePassword(password);
-        } catch (error) {
-          showNotification('Password salah', 'error');
-          return;
-        }
-      } else {
-        return;
-      }
+      setCurrentLockedNote(note);
+      setIsPasswordModalOpen(true);
     } else {
       setCurrentNote(note);
+      setPreviewNote(null);
+      setIsMenuOpen(false);
     }
-    setPreviewNote(null);
-    setIsMenuOpen(false);
   };
 
   const downloadNote = (note) => {
     const noteToDownload = note || currentNote;
-    if (!noteToDownload.title || !noteToDownload.content) {
+    if (!noteToDownload.title || (!noteToDownload.content && !noteToDownload.encryptedContent)) {
       showNotification('Tidak ada catatan untuk diunduh', 'error');
       return;
+    }
+    let content = noteToDownload.content;
+    if (noteToDownload.isLocked) {
+      const password = prompt('Masukkan password untuk mengunduh catatan:');
+      if (!password) return;
+      try {
+        content = decryptContent(noteToDownload.encryptedContent, password);
+      } catch (error) {
+        showNotification('Password salah', 'error');
+        return;
+      }
     }
     const noteContent = `
       <!DOCTYPE html>
@@ -153,7 +198,7 @@ const NoteApp = () => {
       </head>
       <body>
         <h1>${noteToDownload.title}</h1>
-        ${noteToDownload.content}
+        ${content}
         <p>Tags: ${noteToDownload.tags.join(', ')}</p>
       </body>
       </html>
@@ -168,28 +213,15 @@ const NoteApp = () => {
     showNotification('Catatan berhasil diunduh');
   };
 
-  // Lanjutan di Bagian 2...
-  // Lanjutan dari Bagian 1...
-
   const previewNoteHandler = (note) => {
     if (note.isLocked) {
-      const password = prompt('Masukkan password untuk melihat catatan:');
-      if (password) {
-        try {
-          const decryptedContent = decryptContent(note.encryptedContent, password);
-          setPreviewNote({...note, content: decryptedContent});
-        } catch (error) {
-          showNotification('Password salah', 'error');
-          return;
-        }
-      } else {
-        return;
-      }
+      setCurrentLockedNote(note);
+      setIsPasswordModalOpen(true);
     } else {
       setPreviewNote(note);
+      setCurrentNote({ id: '', title: '', content: '', tags: [], reminder: null, isLocked: false, encryptedContent: '' });
+      setIsMenuOpen(false);
     }
-    setCurrentNote({ id: '', title: '', content: '', tags: [], reminder: null, isLocked: false, encryptedContent: '' });
-    setIsMenuOpen(false);
   };
 
   const resetNote = () => {
@@ -212,7 +244,7 @@ const NoteApp = () => {
       return (
         note.title.toLowerCase().includes(lowercaseQuery) ||
         note.tags.some(tag => tag.toLowerCase().includes(lowercaseQuery)) ||
-        note.content.toLowerCase().includes(lowercaseQuery)
+        (note.content && note.content.toLowerCase().includes(lowercaseQuery))
       );
     });
   }, [notes, searchQuery]);
@@ -223,6 +255,25 @@ const NoteApp = () => {
       editorRef.current.focus();
     }
   };
+
+  const handlePasswordSubmit = (password) => {
+    try {
+      const decryptedContent = decryptContent(currentLockedNote.encryptedContent, password);
+      if (previewNote) {
+        setPreviewNote({...currentLockedNote, content: decryptedContent});
+      } else {
+        setCurrentNote({...currentLockedNote, content: decryptedContent});
+      }
+      setIsPasswordModalOpen(false);
+      setCurrentLockedNote(null);
+      setIsMenuOpen(false);
+    } catch (error) {
+      showNotification('Password salah', 'error');
+    }
+  };
+
+  // Render function akan dilanjutkan di Part 4
+  // Lanjutan dari Part 3
 
   return (
     <div className={`flex flex-col h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
@@ -262,7 +313,7 @@ const NoteApp = () => {
                     <h3 className="font-bold text-sm">{note.title}</h3>
                     {note.isLocked && <Lock size={14} className={darkMode ? 'text-yellow-400' : 'text-yellow-600'} />}
                   </div>
-                  <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} dangerouslySetInnerHTML={{ __html: note.content.substring(0, 100) + '...' }} />
+                  <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} dangerouslySetInnerHTML={{ __html: note.content ? note.content.substring(0, 100) + '...' : 'Catatan terkunci' }} />
                   <div className="flex mt-2 space-x-1 flex-wrap">
                     {note.tags && note.tags.map(tag => (
                       <span key={tag} className={`text-xs px-2 py-1 rounded mb-1 ${darkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'}`}>{tag}</span>
@@ -371,6 +422,13 @@ const NoteApp = () => {
           )}
         </div>
       </div>
+
+      <PasswordModal 
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        onSubmit={handlePasswordSubmit}
+        darkMode={darkMode}
+      />
 
       {notification && (
         <Alert className={`${notification.type === 'error' ? 'bg-red-100 border-red-400 text-red-700' : 'bg-green-100 border-green-400 text-green-700'}`}>
